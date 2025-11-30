@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: fleetstack_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Stack@321
+      POSTGRES_DB: FleetStack_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: fleetstack_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # NestJS Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: listner_nest_app
+    restart: unless-stopped
+    ports:
+      - "5023:5023"  # GT06 Port
+      - "5024:5024"  # Teltonika Port
+      - "5055:5055"  # API Port
+    environment:
+      - NODE_ENV=production
+      - PRIMARY_DATABASE_URL=postgresql://postgres:Stack@321@postgres:5432/FleetStack_db?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - GT06_PORT=5023
+      - TELTONIKA_PORT=5024
+      - API_PORT=5055
+      - CON_TIME_OUT=5000
+      - SECRET_KEY=123456
+      - DATA_FORWARD=https://agent.fleetstack.in/webhook/gpsdata
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5055/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  redis_data:
