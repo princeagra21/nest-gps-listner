@@ -4,6 +4,9 @@ import { IProtocolDecoder } from './base/decoder.interface';
 import { GT06Decoder } from './gt06/gt06.decoder';
 import { TeltonikaDecoder } from './teltonika/teltonika.decoder';
 import { Logger } from '@utils/logger';
+import { processGt06 } from './gt06/process.gt06';
+import { processTeltonika } from './teltonika/process.teltonika';
+import { Socket } from 'net';
 
 @Injectable()
 export class ProtocolFactory {
@@ -48,6 +51,32 @@ export class ProtocolFactory {
     }
 
     return decoder;
+  }
+
+  /**
+   * Get process function by port number
+   * Routes to the appropriate protocol processing function based on the configured port
+   * @param port - Port number to get the process function for
+   * @returns Process function that handles parsed data for the protocol, or null if not found
+   */
+  getProcessByPort(port: number): ((socket: Socket, parsedData: any, port: number) => void) | null {
+    const gt06Port = this.configService.get<number>('app.ports.gt06');
+    const teltonikaPort = this.configService.get<number>('app.ports.teltonika');
+
+    if (port === gt06Port) {
+      return (socket: Socket, parsedData: any, port: number) => {
+        processGt06(socket, parsedData, port, 'gt06');
+      };
+    }
+
+    if (port === teltonikaPort) {
+      return (socket: Socket, parsedData: any, port: number) => {
+        processTeltonika(socket, parsedData, port, 'teltonika');
+      };
+    }
+
+    this.logger.warn(`No process function registered for port ${port}`);
+    return null;
   }
 
   /**

@@ -28,7 +28,7 @@ export default registerAs('app', () => ({
   
   // Data Forwarding
   dataForward: {
-    url: process.env.DATA_FORWARD,
+    url: process.env.DATA_FORWARD_URL,
   },
   
   // API Configuration

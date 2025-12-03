@@ -11,14 +11,10 @@ import { DeviceService } from '../device/device.service';
 import { DataForwarderService } from '../data-forwarder/data-forwarder.service';
 import { PacketType } from '../protocols/base/decoder.interface';
 import { PrismaClient } from '@prisma/client';
+import { SocketWithMeta } from '../../types/socket-meta';
 
 interface SocketBuffer {
   buffer: Buffer;
-  imei?: string;
-}
-
-// Extend Socket interface to include imei property
-interface ExtendedSocket extends net.Socket {
   imei?: string;
 }
 
@@ -26,7 +22,7 @@ interface ExtendedSocket extends net.Socket {
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   private logger = new Logger(TcpServerService.name);
   private servers: Map<number, net.Server> = new Map();
-  private socketBuffers: Map<ExtendedSocket, SocketBuffer> = new Map();
+  private socketBuffers: Map<SocketWithMeta, SocketBuffer> = new Map();
   private isShuttingDown = false;
   private prisma = new PrismaClient();
 
@@ -73,7 +69,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     }
 
     const server = net.createServer((socket) => {
-      this.handleConnection(socket as ExtendedSocket, port, protocol);
+      this.handleConnection(socket as SocketWithMeta, port, protocol);
     });
 
     // Server configuration for high performance
@@ -103,7 +99,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   /**
    * Handle new socket connection
    */
-  private handleConnection(socket: ExtendedSocket, port: number, protocol: string): void {
+  private handleConnection(socket: SocketWithMeta, port: number, protocol: string): void {
     const remoteAddress = socket.remoteAddress || 'unknown';
     const remotePort = socket.remotePort || 0;
     const connectionId = `${remoteAddress}:${remotePort}`;
@@ -122,57 +118,37 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     socket.setNoDelay(true);
     socket.setTimeout(this.configService.get<number>('app.connection.socketTimeout', 300000));
 
-    // Initialize imei
-    socket.imei = '';
+    // Initialize socket metadata
+    socket.meta = {
+      connectionId,
+      isAuthorized: false,
+      createdAt: new Date(),
+    };
 
 
     // Handle incoming data
-    socket.on('data', async (data) => {
-     
+    socket.on('data', async (data: Buffer) => {
       const parsedData = await this.handleData(socket, data, port, protocol);
+      console.log('Parsed Data:', JSON.stringify(parsedData, null, 2));
       
-      console.log('Connection ID:', connectionId);
-
+      // Route to appropriate protocol processor based on port
       if (parsedData) {
-
-        if (parsedData?.packetTypes?.includes("LOGIN")) {          
-          socket.imei = parsedData.deviceData[0]?.imei || '';
-          console.log('Socket IMEI set to:', socket.imei);
-          return;
+        const processFunc = this.protocolFactory.getProcessByPort(port);
+        if (processFunc) {
+          processFunc(socket, parsedData, port);
+        } else {
+          this.logger.warn(`No process function found for port ${port}`);
         }
-          
-          // Check if IMEI exists in database using Prisma devices table
-          if (socket.imei) {
-            const isValidImei = await this.validateImei(socket.imei);
-            
-            if (isValidImei) {
-              this.logger.log(`Device validated successfully: ${socket.imei}`);
-              // Forward data using non-blocking POST request
-              this.forwardDataAsync(parsedData);
-            } else {
-              this.logger.warn(`Device validation failed: ${socket.imei}`);
-              console.log('Device not found in database for IMEI:', socket.imei);
-              // Optionally close connection for unauthorized devices
-               socket.destroy();
-            }
-          }
-       
-
       }
-
-
-
-
-
     });
 
     // Handle socket close
-    socket.on('close', (hadError) => {
+    socket.on('close', (hadError: boolean) => {
       this.handleDisconnection(socket, port, protocol, hadError ? 'error' : 'normal');
     });
 
     // Handle socket error
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       this.logger.error(`Socket error for ${connectionId}`, error.message);
       metrics.disconnections.inc({ protocol, port: port.toString(), reason: 'error' });
     });
@@ -190,7 +166,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
    * @returns Parsed data information including packet types and device data
    */
   private async handleData(
-    socket: ExtendedSocket,
+    socket: SocketWithMeta,
     data: Buffer,
     port: number,
     protocol: string,
@@ -227,9 +203,11 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
         result.packetsProcessed++;
         result.packetTypes.push(decodedPacket.type);
 
-        // Store IMEI for future packets
+        // Store IMEI for future packets in both socketBuffer and socket.meta
         if (decodedPacket.imei) {
           socketBuffer.imei = decodedPacket.imei;
+          socket.meta.imei = decodedPacket.imei;
+          socket.meta.lastPacketAt = new Date();
         }
 
         // Transform to device data format
@@ -254,87 +232,14 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     return result.packetsProcessed > 0 ? result : null;
   }
 
-  /**
-   * Forward data asynchronously without blocking
-   */
-  private forwardDataAsync(data: any): void {
-    const forwardUrl = process.env.DATA_FORWARD;
-    
-    if (!forwardUrl) {
-      this.logger.warn('DATA_FORWARD environment variable not set');
-      return;
-    }
 
-    try {
-      const postData = JSON.stringify(data);
-      const url = new URL(forwardUrl);
-      const isHttps = url.protocol === 'https:';
-      
-      const options = {
-        hostname: url.hostname,
-        port: url.port || (isHttps ? 443 : 80),
-        path: url.pathname + url.search,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData),
-          'Authorization': `Bearer ${process.env.SECRET_KEY}`
-        },
-        timeout: 5000 // 5 second timeout
-      };
 
-      const httpModule = isHttps ? https : http;
-      
-      const req = httpModule.request(options, (res) => {
-        // Consume response data to free memory
-        res.on('data', () => {});
-        res.on('end', () => {
-          this.logger.debug(`Data forwarded successfully to ${forwardUrl}`);
-        });
-      });
-
-      req.on('error', (error) => {
-        this.logger.error(`Failed to forward data to ${forwardUrl}`, error.message);
-      });
-
-      req.on('timeout', () => {
-        this.logger.warn(`Request timeout while forwarding to ${forwardUrl}`);
-        req.destroy();
-      });
-
-      // Write data and end request
-      req.write(postData);
-      req.end();
-      
-    } catch (error) {
-      this.logger.error('Error creating forward request', (error as Error).message);
-    }
-  }
-
-  /**
-   * Validate IMEI exists in database
-   */
-  private async validateImei(imei: string): Promise<boolean> {
-    try {
-      const device = await this.prisma.devices.findUnique({
-        where: {
-          imei: imei
-        }
-      });    
-      
-      
-      return device !== null;
-    } catch (error) {
-      this.logger.error(`Database error while validating IMEI ${imei}`, (error as Error).stack);
-      return false;
-    }
-  }
 
   /**
    * Handle login packet
    */
   private async handleLoginPacket(
-    socket: ExtendedSocket,
+    socket: SocketWithMeta,
     imei: string,
     port: number,
     protocol: string,
@@ -357,7 +262,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
    * Handle socket disconnection
    */
   private handleDisconnection(
-    socket: ExtendedSocket,
+    socket: SocketWithMeta,
     port: number,
     protocol: string,
     reason: string,

@@ -2,6 +2,7 @@ import { Socket } from 'net';
 import { Injectable } from '@nestjs/common';
 import { BaseDecoder } from '../base/base-decoder.abstract';
 import { DecodedPacket, PacketType, DeviceData, LocationData } from '../base/decoder.interface';
+import { SocketWithMeta } from '../../../types/socket-meta';
 import {
   GT06MessageType,
   GT06_START_BIT,
@@ -91,7 +92,8 @@ export class GT06Decoder extends BaseDecoder {
       const isShortPacket = firstByte === 0x78;
 
       // Extract socket IMEI for use in location packets
-      const socketImei = (socket as any).imei || '';
+      const socketWithMeta = socket as SocketWithMeta;
+      const socketImei = socketWithMeta.meta?.imei || '';
 
       // Determine header size and length value
       let headerSize: number;

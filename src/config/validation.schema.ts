@@ -19,7 +19,7 @@ export const validationSchema = Joi.object({
   SECRET_KEY: Joi.string().required(),
   
   // Data Forwarding
-  DATA_FORWARD: Joi.string().uri().required(),
+  DATA_FORWARD_URL: Joi.string().uri().required(),
   
   // API Configuration
   API_PORT: Joi.number().default(5055),
