@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProtocolDecoder } from './base/decoder.interface';
-import { GT06Decoder } from './gt06/gt06.decoder';
-import { TeltonikaDecoder } from './teltonika/teltonika.decoder';
+import { GT06Service } from './gt06/gt06.service';
+import { TeltonikaService } from './teltonika/teltonika.service';
 import { Logger } from '@utils/logger';
-import { processGt06 } from './gt06/process.gt06';
-import { processTeltonika } from './teltonika/process.teltonika';
-import { Socket } from 'net';
+import { SocketWithMeta } from '@/types/socket-meta';
 
 @Injectable()
 export class ProtocolFactory {
@@ -15,8 +13,8 @@ export class ProtocolFactory {
 
   constructor(
     private configService: ConfigService,
-    private gt06Decoder: GT06Decoder,
-    private teltonikaDecoder: TeltonikaDecoder,
+    private gt06Service: GT06Service,
+    private teltonikaService: TeltonikaService,
   ) {
     this.initializeDecoders();
   }
@@ -29,13 +27,13 @@ export class ProtocolFactory {
     const teltonikaPort = this.configService.get<number>('app.ports.teltonika');
 
     if (gt06Port) {
-      this.decoderMap.set(gt06Port, this.gt06Decoder);
-      this.logger.log(`Registered GT06 decoder for port ${gt06Port}`);
+      this.decoderMap.set(gt06Port, this.gt06Service);
+      this.logger.log(`Registered GT06 service for port ${gt06Port}`);
     }
 
     if (teltonikaPort) {
-      this.decoderMap.set(teltonikaPort, this.teltonikaDecoder);
-      this.logger.log(`Registered Teltonika decoder for port ${teltonikaPort}`);
+      this.decoderMap.set(teltonikaPort, this.teltonikaService);
+      this.logger.log(`Registered Teltonika service for port ${teltonikaPort}`);
     }
   }
 
@@ -55,23 +53,23 @@ export class ProtocolFactory {
 
   /**
    * Get process function by port number
-   * Routes to the appropriate protocol processing function based on the configured port
+   * Routes to the appropriate protocol service's processData method based on the configured port
    * @param port - Port number to get the process function for
    * @returns Process function that handles parsed data for the protocol, or null if not found
    */
-  getProcessByPort(port: number): ((socket: Socket, parsedData: any, port: number) => void) | null {
+  getProcessByPort(port: number): ((socket: SocketWithMeta, parsedData: any, port: number) => Promise<void>) | null {
     const gt06Port = this.configService.get<number>('app.ports.gt06');
     const teltonikaPort = this.configService.get<number>('app.ports.teltonika');
 
     if (port === gt06Port) {
-      return (socket: Socket, parsedData: any, port: number) => {
-        processGt06(socket, parsedData, port, 'gt06');
+      return async (socket: SocketWithMeta, parsedData: any, port: number) => {
+        await this.gt06Service.processData(socket, parsedData, port);
       };
     }
 
     if (port === teltonikaPort) {
-      return (socket: Socket, parsedData: any, port: number) => {
-        processTeltonika(socket, parsedData, port, 'teltonika');
+      return async (socket: SocketWithMeta, parsedData: any, port: number) => {
+        await this.teltonikaService.processData(socket, parsedData, port);
       };
     }
 

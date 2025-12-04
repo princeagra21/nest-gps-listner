@@ -1,10 +1,13 @@
 import { Module } from '@nestjs/common';
-import { GT06Decoder } from './gt06/gt06.decoder';
-import { TeltonikaDecoder } from './teltonika/teltonika.decoder';
+import { GT06Service } from './gt06/gt06.service';
+import { TeltonikaService } from './teltonika/teltonika.service';
 import { ProtocolFactory } from './protocol.factory';
+import { CommonModule } from '../common/common.module';
+import { DataForwarderModule } from '../data-forwarder/data-forwarder.module';
 
 @Module({
-  providers: [GT06Decoder, TeltonikaDecoder, ProtocolFactory],
-  exports: [ProtocolFactory],
+  imports: [CommonModule, DataForwarderModule],
+  providers: [GT06Service, TeltonikaService, ProtocolFactory],
+  exports: [ProtocolFactory, GT06Service, TeltonikaService],
 })
 export class ProtocolsModule {}

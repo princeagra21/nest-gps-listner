@@ -10,8 +10,8 @@ import { ConnectionManagerService } from '../connection-manager/connection-manag
 import { DeviceService } from '../device/device.service';
 import { DataForwarderService } from '../data-forwarder/data-forwarder.service';
 import { PacketType } from '../protocols/base/decoder.interface';
-import { PrismaClient } from '@prisma/client';
 import { SocketWithMeta } from '../../types/socket-meta';
+import { string } from 'joi';
 
 interface SocketBuffer {
   buffer: Buffer;
@@ -24,7 +24,9 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   private servers: Map<number, net.Server> = new Map();
   private socketBuffers: Map<SocketWithMeta, SocketBuffer> = new Map();
   private isShuttingDown = false;
-  private prisma = new PrismaClient();
+  private connections = new Map<string, net.Socket>();
+  
+
 
   constructor(
     private configService: ConfigService,
@@ -34,15 +36,9 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     private dataForwarder: DataForwarderService,
   ) { }
 
-  async onModuleInit() {
-    // Connect to database
-    try {
-      await this.prisma.$connect();
-      this.logger.log('Prisma database connected successfully');
-    } catch (error) {
-      this.logger.error('Failed to connect to database', (error as Error).stack);
-      throw error;
-    }
+  
+
+  async onModuleInit() { 
 
     const ports = this.protocolFactory.getAllPorts();
 
@@ -53,8 +49,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.isShuttingDown = true;
-    await this.stopAllServers();
-    await this.prisma.$disconnect();
+    await this.stopAllServers();    
   }
 
   /**
@@ -106,12 +101,14 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
     this.logger.debug(`New connection from ${connectionId} on port ${port}`);
 
+    this.connections.set(connectionId, socket);
+
     // Initialize buffer for this socket
     this.socketBuffers.set(socket, { buffer: Buffer.alloc(0) });
 
     // Update metrics
-    metrics.totalConnections.inc({ protocol, port: port.toString() });
-    metrics.activeConnections.inc({ protocol, port: port.toString() });
+    // metrics.totalConnections.inc({ protocol, port: port.toString() });
+    // metrics.activeConnections.inc({ protocol, port: port.toString() });
 
     // Socket configuration
     socket.setKeepAlive(true, this.configService.get<number>('app.connection.keepAliveTimeout', 120000));
@@ -128,23 +125,28 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
     // Handle incoming data
     socket.on('data', async (data: Buffer) => {
-      const parsedData = await this.handleData(socket, data, port, protocol);
-      console.log('Parsed Data:', JSON.stringify(parsedData, null, 2));
-      
-      // Route to appropriate protocol processor based on port
-      if (parsedData) {
-        const processFunc = this.protocolFactory.getProcessByPort(port);
-        if (processFunc) {
-          processFunc(socket, parsedData, port);
-        } else {
-          this.logger.warn(`No process function found for port ${port}`);
+      try {
+        const parsedData = await this.handleData(socket, data, port, protocol);       
+        console.log('---parsedData---', JSON.stringify(parsedData, null, 2));
+        // Route to appropriate protocol processor based on port
+        if (parsedData) {
+          const processFunc = this.protocolFactory.getProcessByPort(port);
+          if (processFunc) {
+            await processFunc(socket, parsedData, port);
+          } else {
+            this.logger.warn(`No process function found for port ${port}`);
+          }
         }
+      } catch (error) {
+        this.logger.error('Error handling socket data', (error as Error).stack);
       }
     });
 
     // Handle socket close
     socket.on('close', (hadError: boolean) => {
       this.handleDisconnection(socket, port, protocol, hadError ? 'error' : 'normal');
+      this.connections.delete(connectionId);
+
     });
 
     // Handle socket error
@@ -197,7 +199,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
       try {
         // Decode packet
-        const decodedPacket = decoder.decode(packetData, socket);
+        const decodedPacket = decoder.decode(packetData, socket);        
         if (!decodedPacket) continue;
 
         result.packetsProcessed++;
@@ -218,7 +220,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
         // Send acknowledgment if required
         if (decodedPacket.requiresAck) {
-          const ack = decoder.generateAck(decodedPacket);
+          const ack = decoder.generateAck(decodedPacket);          
           if (ack) {
             socket.write(ack);
           }

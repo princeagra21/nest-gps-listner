@@ -19,7 +19,8 @@ export interface TeltonikaAVLRecord {
 }
 
 export interface TeltonikaPacket {
-  imei: string;
+  imei?: string;
   codecId: number;
+  recordCount: number;
   records: TeltonikaAVLRecord[];
 }

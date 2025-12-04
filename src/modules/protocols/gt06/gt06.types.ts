@@ -33,6 +33,7 @@ export interface GT06LocationInfo {
   cellId: number;
   acc: boolean;
   gpsFixed: boolean;
+  gpsRealtime: boolean;
 }
 
 export interface GT06StatusInfo {

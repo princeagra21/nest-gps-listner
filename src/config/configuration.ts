@@ -42,7 +42,17 @@ export default registerAs('app', () => ({
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
     password: process.env.REDIS_PASSWORD || undefined,
     db: parseInt(process.env.REDIS_DB || '0', 10),
+    
+
   },
+
+    // Redis Keys - Global constants for consistent key naming
+
+  rediskeys: {
+      deviceImeiSet: 'devices:imei:set',
+      deviceStatusHash: 'devices:status',
+      commandQueuePrefix: 'devices:commands:',
+    },
   
   // Application Configuration
   nodeEnv: process.env.NODE_ENV || 'development',
