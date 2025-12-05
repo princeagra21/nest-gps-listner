@@ -534,6 +534,13 @@ export class GT06Service extends BaseDecoder {
                   status: 'CONNECTED',
                   updatedAt: new Date(),
                 });
+                let commands =  await this.commonService.getDeviceCommands(deviceData.imei);
+                console.log('Pending Commands:',commands);
+                for(const cmd of commands)
+                {
+                    await this.sendCommand(socket,cmd.command);
+                    await this.commonService.removeDeviceCommand(deviceData.imei,cmd.id);
+                }
             }
             if(deviceData.packetType === PacketType.HEARTBEAT && socket.meta.isAuthorized)
             {

@@ -8,6 +8,6 @@ import { DataForwarderModule } from '../data-forwarder/data-forwarder.module';
 @Module({
   imports: [CommonModule, DataForwarderModule],
   providers: [GT06Service, TeltonikaService, ProtocolFactory],
-  exports: [ProtocolFactory, GT06Service, TeltonikaService],
+  exports: [ProtocolFactory],
 })
 export class ProtocolsModule {}

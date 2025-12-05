@@ -1,16 +1,22 @@
-import { Controller, Get } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { TcpServerService } from '../tcp-server/tcp-server.service';
 import { ConnectionManagerService } from '../connection-manager/connection-manager.service';
-import { DeviceService } from '../device/device.service';
-import { metrics } from '@utils/metrics';
+import { ApiService } from './api.service';
+import { ConfigService } from '@nestjs/config';
+import { BearerAuthGuard } from './guard/bearer-auth.guard';
 
 @Controller('api')
 export class ApiController {
-  constructor(
-    private tcpServerService: TcpServerService,
-    private connectionManager: ConnectionManagerService,
-    private deviceService: DeviceService,
-  ) {}
+
+
+
+  constructor(   
+    private readonly apiService: ApiService,
+   
+  ) {
+
+     
+  }
 
   @Get('health')
   async getHealth() {
@@ -21,42 +27,13 @@ export class ApiController {
     };
   }
 
-  @Get('stats')
-  async getStats() {
-    const serverStats = this.tcpServerService.getServerStats();
-    const connectionStats = await this.connectionManager.getStats();
-    const cacheStats = this.deviceService.getCacheStats();
 
-    return {
-      server: serverStats,
-      connections: connectionStats,
-      cache: cacheStats,
-      memory: {
-        heapUsed: process.memoryUsage().heapUsed,
-        heapTotal: process.memoryUsage().heapTotal,
-        rss: process.memoryUsage().rss,
-      },
-    };
-  }
-
-  @Get('metrics')
-  async getMetrics() {
-    return await metrics.getMetrics();
-  }
-
-  @Get('connections')
-  async getConnections() {
-    const activeDevices = await this.connectionManager.getActiveDevices();
-    const connections = await Promise.all(
-      activeDevices.map(async (imei) => {
-        return await this.connectionManager.getConnection(imei);
-      }),
-    );
-
-    return {
-      total: activeDevices.length,
-      devices: connections.filter((c) => c !== null),
-    };
+ @Post('commands/:imei')
+ @UseGuards(BearerAuthGuard)
+  async addCommand(@Param('imei') imei: string, @Body('command') command: string) {
+    
+    return  await this.apiService.SendCommand(imei, command); 
+  
   }
 
   @Get('info')

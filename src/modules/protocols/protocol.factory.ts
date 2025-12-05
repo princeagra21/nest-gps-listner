@@ -91,4 +91,44 @@ export class ProtocolFactory {
     const decoder = this.decoderMap.get(port);
     return decoder ? decoder.protocolName : null;
   }
+
+  /**
+   * Send command to device based on socket port
+   * Automatically identifies the protocol and encodes the command accordingly
+   * @param socket - Socket with metadata containing port information
+   * @param command - Command string to send
+   * @returns Promise<boolean> - Success status of command sending
+   */
+  async sendCommand(socket: SocketWithMeta, command: string): Promise<boolean> {
+    try {
+      const port = socket.localPort;
+      
+      if (!port) {
+        this.logger.error('Socket port not available for command sending');
+        return false;
+      }
+
+      // Get the decoder/service for this port
+      const decoder = this.decoderMap.get(port);
+      
+      if (!decoder) {
+        this.logger.error(`No protocol service found for port ${port}`);
+        return false;
+      }
+
+      // Check if the decoder has sendCommand method
+      if (typeof (decoder as any).sendCommand !== 'function') {
+        this.logger.error(`Protocol ${decoder.protocolName} does not support sendCommand`);
+        return false;
+      }
+
+      // Call the protocol-specific sendCommand method
+      this.logger.log(`Sending command via ${decoder.protocolName} protocol on port ${port}`);
+      return await (decoder as any).sendCommand(socket, command);
+      
+    } catch (error) {
+      this.logger.error('Failed to send command', (error as Error).message);
+      return false;
+    }
+  }
 }

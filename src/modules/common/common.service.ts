@@ -26,15 +26,6 @@ export class CommonService {
   private get redisClient() {
     return this.connectionManager.getRedisClient();
   }
-  /**
-   * Example: Get user by ID
-   */
-  async getUserById(userId: number) {
-    return await this.prisma.user.findUnique({
-      where: { uid: userId }
-
-    });
-  }
 
 
 
@@ -87,7 +78,36 @@ export class CommonService {
     }
   }
 
+  async getDeviceCommands(imei: string): Promise<Array<{id:number,command: string}>> {
+    const key = `${this.COMMAND_QUEUE_KEY_PREFIX}${imei}`;
+    const commands = await this.redisClient.lrange(key, 0, -1);   
+    return commands.map((cmd) => {
+      const parsed = JSON.parse(cmd);
+      return { id: parseInt(parsed.id), command: parsed.command };
+    });
+  }
 
-
-
+  async removeDeviceCommand(imei: string, commandId: number): Promise<void> {
+    const key = `${this.COMMAND_QUEUE_KEY_PREFIX}${imei}`;
+    
+    // Get all commands to find the one with matching ID
+    const commands = await this.redisClient.lrange(key, 0, -1);
+    const commandToRemove = commands.find(cmd => {
+      const parsed = JSON.parse(cmd);
+      return parseInt(parsed.id) === commandId;
+    });
+    
+    // Remove the full JSON string from Redis
+    if (commandToRemove) {
+      await this.redisClient.lrem(key, 1, commandToRemove);
+    }
+    
+    // Delete from database
+    await this.prisma.commandQueue.delete({
+      where: {
+        id: commandId,
+      },
+    });
+   
+  }
 }

@@ -4,14 +4,13 @@ import * as net from 'net';
 import * as https from 'https';
 import * as http from 'http';
 import { Logger } from '@utils/logger';
-import { metrics } from '@utils/metrics';
 import { ProtocolFactory } from '../protocols/protocol.factory';
 import { ConnectionManagerService } from '../connection-manager/connection-manager.service';
-import { DeviceService } from '../device/device.service';
 import { DataForwarderService } from '../data-forwarder/data-forwarder.service';
 import { PacketType } from '../protocols/base/decoder.interface';
 import { SocketWithMeta } from '../../types/socket-meta';
 import { string } from 'joi';
+import { CommonService } from '../common/common.service';
 
 interface SocketBuffer {
   buffer: Buffer;
@@ -25,20 +24,18 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
   private socketBuffers: Map<SocketWithMeta, SocketBuffer> = new Map();
   private isShuttingDown = false;
   private connections = new Map<string, net.Socket>();
-  
+
 
 
   constructor(
     private configService: ConfigService,
     private protocolFactory: ProtocolFactory,
-    private connectionManager: ConnectionManagerService,
-    private deviceService: DeviceService,
-    private dataForwarder: DataForwarderService,
+    private readonly commonService: CommonService,
   ) { }
 
-  
 
-  async onModuleInit() { 
+
+  async onModuleInit() {
 
     const ports = this.protocolFactory.getAllPorts();
 
@@ -49,7 +46,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy() {
     this.isShuttingDown = true;
-    await this.stopAllServers();    
+    await this.stopAllServers();
   }
 
   /**
@@ -88,7 +85,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.servers.set(port, server);
-    metrics.activeConnections.set({ protocol, port: port.toString() }, 0);
+    
   }
 
   /**
@@ -99,7 +96,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     const remotePort = socket.remotePort || 0;
     const connectionId = `${remoteAddress}:${remotePort}`;
 
-    this.logger.debug(`New connection from ${connectionId} on port ${port}`);
+    // this.logger.debug(`New connection from ${connectionId} on port ${port}`);
 
     this.connections.set(connectionId, socket);
 
@@ -126,7 +123,10 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     // Handle incoming data
     socket.on('data', async (data: Buffer) => {
       try {
-        const parsedData = await this.handleData(socket, data, port, protocol);       
+        // Store connection when data is received
+        this.connections.set(connectionId, socket);
+
+        const parsedData = await this.handleData(socket, data, port, protocol);
         console.log('---parsedData---', JSON.stringify(parsedData, null, 2));
         // Route to appropriate protocol processor based on port
         if (parsedData) {
@@ -143,23 +143,23 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     });
 
     // Handle socket close
-    socket.on('close', (hadError: boolean) => {
+    socket.on('close', async (hadError: boolean) => {
       this.handleDisconnection(socket, port, protocol, hadError ? 'error' : 'normal');
-      this.connections.delete(connectionId);
+
 
     });
 
     // Handle socket error
     socket.on('error', (error: Error) => {
       this.logger.error(`Socket error for ${connectionId}`, error.message);
-      metrics.disconnections.inc({ protocol, port: port.toString(), reason: 'error' });
+      
     });
 
     // Handle timeout
     socket.on('timeout', () => {
       this.logger.warn(`Socket timeout for ${connectionId}`);
       socket.destroy();
-      metrics.disconnections.inc({ protocol, port: port.toString(), reason: 'timeout' });
+      
     });
   }
 
@@ -199,7 +199,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
       try {
         // Decode packet
-        const decodedPacket = decoder.decode(packetData, socket);        
+        const decodedPacket = decoder.decode(packetData, socket);
         if (!decodedPacket) continue;
 
         result.packetsProcessed++;
@@ -220,7 +220,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
         // Send acknowledgment if required
         if (decodedPacket.requiresAck) {
-          const ack = decoder.generateAck(decodedPacket);          
+          const ack = decoder.generateAck(decodedPacket);
           if (ack) {
             socket.write(ack);
           }
@@ -237,28 +237,7 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
 
 
-  /**
-   * Handle login packet
-   */
-  private async handleLoginPacket(
-    socket: SocketWithMeta,
-    imei: string,
-    port: number,
-    protocol: string,
-  ): Promise<void> {
-    this.logger.log(`Device logged in: ${imei} on ${protocol}`);
-
-    // Store connection
-    await this.connectionManager.storeConnection({
-      imei,
-      protocol,
-      port,
-      remoteAddress: socket.remoteAddress || 'unknown',
-      remotePort: socket.remotePort || 0,
-      connectedAt: new Date(),
-      lastActivity: new Date(),
-    });
-  }
+ 
 
   /**
    * Handle socket disconnection
@@ -268,18 +247,15 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
     port: number,
     protocol: string,
     reason: string,
-  ): void {
-    const socketBuffer = this.socketBuffers.get(socket);
-    const imei = socketBuffer?.imei;
+  ): void {   
 
-    if (imei) {
-      this.logger.debug(`Device disconnected: ${imei}`, { reason });
-      this.connectionManager.removeConnection(imei);
-    }
+    this.connections.delete(socket.meta.connectionId);
+    this.commonService.updateDeviceLiveStatus({
+      imei: socket.meta.imei!,
+      status: 'DISCONNECTED',
+      updatedAt: new Date(),
+    });
 
-    this.socketBuffers.delete(socket);
-    metrics.activeConnections.dec({ protocol, port: port.toString() });
-    metrics.disconnections.inc({ protocol, port: port.toString(), reason });
   }
 
   /**
@@ -312,4 +288,32 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
       activeConnections: this.socketBuffers.size,
     };
   }
+
+
+
+  /**
+   * Get connection by IMEI
+   */
+  getConnectionByImei(imei: string): net.Socket | undefined {
+    // Find connection where socket.meta.imei matches
+    for (const [connectionId, socket] of this.connections.entries()) {
+      const socketWithMeta = socket as SocketWithMeta;
+      if (socketWithMeta.meta?.imei === imei) {
+        return socket;
+      }
+    }
+    return undefined;
+  }
+
+  sendCommandbyIMEI(imei: string, command: string): boolean {
+    const socket = this.getConnectionByImei(imei);
+    if (socket) {
+      
+      this.protocolFactory.sendCommand(socket as SocketWithMeta, command);
+      return true;
+    }
+    return false;
+  }
+
+
 }

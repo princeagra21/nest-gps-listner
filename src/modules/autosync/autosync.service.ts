@@ -81,9 +81,9 @@ export class AutosyncService implements OnApplicationBootstrap, BeforeApplicatio
     /**
      * Public method to get Redis client (delegated to ConnectionManager)
      */
-    getRedisClient(): Redis {
-        return this.redis;
-    }
+    // getRedisClient(): Redis {
+    //     return this.redis;
+    // }
 
     async syncInitialData(): Promise<void> {
         if (!this.redis) {
