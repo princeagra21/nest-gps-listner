@@ -1,20 +1,31 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { Socket } from 'net';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { BaseDecoder } from '../base/base-decoder.abstract';
 import { DecodedPacket, PacketType, DeviceData, LocationData } from '../base/decoder.interface';
 import { TeltonikaCodec, TeltonikaAVLRecord, TeltonikaPacket } from './teltonika.types';
 import { SocketWithMeta } from '@/types/socket-meta';
+import { CommonService } from '@/modules/common/common.service';
+import { DataForwarderService } from '@/modules/data-forwarder/data-forwarder.service';
 
 @Injectable()
 export class TeltonikaService extends BaseDecoder {
-  protected logger = new Logger(TeltonikaService.name);
   readonly protocolName = 'Teltonika';
   readonly requiresDeviceValidation = true;
 
   private static readonly MIN_PACKET_LENGTH = 17;
   private static readonly IMEI_LENGTH = 15;
   private static readonly IMEI_PACKET_LENGTH = 17; // 2 bytes length + 15 bytes IMEI
+
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    logger: ExtendedLoggerService,
+    private readonly dataForwarder: DataForwarderService,
+    private readonly commonService: CommonService,
+  ) {
+    super(logger);
+  }
 
   /**
    * Check if buffer contains a complete Teltonika packet

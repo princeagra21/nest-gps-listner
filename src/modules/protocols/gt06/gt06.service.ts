@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { Socket } from 'net';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { BaseDecoder } from '../base/base-decoder.abstract';
 import { DecodedPacket, PacketType, DeviceData, LocationData } from '../base/decoder.interface';
 import { GT06MessageType, GT06_START_BIT, GT06_START_BIT_LONG, GT06LocationInfo, GT06StatusInfo } from './gt06.types';
@@ -10,7 +11,6 @@ import { DataForwarderService } from '@/modules/data-forwarder/data-forwarder.se
 
 @Injectable()
 export class GT06Service extends BaseDecoder {
-  protected logger = new Logger(GT06Service.name);
   readonly protocolName = 'GT06';
   readonly requiresDeviceValidation = true;
 
@@ -19,11 +19,13 @@ export class GT06Service extends BaseDecoder {
   private static readonly SERIAL_NUMBER_LENGTH = 2;
 
   constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    logger: ExtendedLoggerService,
     private readonly dataForwarder: DataForwarderService,
     private readonly commonService: CommonService,
     
   ) {
-    super();
+    super(logger);
   }
 
   /**
@@ -650,8 +652,9 @@ export class GT06Service extends BaseDecoder {
    * Send command to GT06 device
    */
   async sendCommand(socket: Socket, command: string): Promise<boolean> {
+
     try {
-      const commandBuffer = this.encodeCommand(command);
+      const commandBuffer = this.encodeCommand(command);       
       if (!commandBuffer) {
         return false;
       }

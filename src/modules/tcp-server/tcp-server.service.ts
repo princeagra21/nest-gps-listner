@@ -1,9 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { ConfigService } from '@nestjs/config';
 import * as net from 'net';
 import * as https from 'https';
 import * as http from 'http';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ProtocolFactory } from '../protocols/protocol.factory';
 import { ConnectionManagerService } from '../connection-manager/connection-manager.service';
 import { DataForwarderService } from '../data-forwarder/data-forwarder.service';
@@ -19,7 +20,6 @@ interface SocketBuffer {
 
 @Injectable()
 export class TcpServerService implements OnModuleInit, OnModuleDestroy {
-  private logger = new Logger(TcpServerService.name);
   private servers: Map<number, net.Server> = new Map();
   private socketBuffers: Map<SocketWithMeta, SocketBuffer> = new Map();
   private isShuttingDown = false;
@@ -28,6 +28,8 @@ export class TcpServerService implements OnModuleInit, OnModuleDestroy {
 
 
   constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: ExtendedLoggerService,
     private configService: ConfigService,
     private protocolFactory: ProtocolFactory,
     private readonly commonService: CommonService,

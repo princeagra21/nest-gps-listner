@@ -2,96 +2,170 @@
 
 ## Project Overview
 
-This is a **NestJS Framework** project for GPS tracking systems that handles multiple device protocols (GT06, Teltonika) via TCP connections, processes location data, and forwards it to external APIs. Built with TypeScript, Fastify, Prisma, Redis, and enterprise-grade patterns.
+A **production-ready**, high-performance **NestJS TCP server** for GPS device tracking that handles **100K+ concurrent connections**. Built with clean architecture principles, this system processes multiple GPS protocols (GT06, Teltonika) via TCP connections, validates devices, processes location data, and forwards it to external APIs in real-time.
+
+**Key Highlights:**
+- 🏗️ Clean Architecture with modular, maintainable design
+- ⚡ High-performance Fastify HTTP adapter
+- 🔌 Multi-protocol TCP server with factory pattern
+- 📡 Redis-based connection state management
+- 🗄️ PostgreSQL with Prisma ORM
+- 📊 Real-time data forwarding
+- 🔐 JWT Bearer authentication for API endpoints
+- 📝 Structured logging with Winston
+- 🐳 Docker-ready with docker-compose
 
 ---
 
 ## Technology Stack
 
-- **Framework**: NestJS v10.3.0 (TypeScript)
-- **HTTP Adapter**: Fastify (high performance, 100K+ concurrent connections)
-- **Database**: PostgreSQL with Prisma ORM v5.7.1
-- **Cache Layer**: Redis v5.3.2 (ioredis client)
-- **Monitoring**: Prometheus metrics (prom-client)
-- **Logging**: Winston with daily file rotation
-- **Validation**: class-validator, class-transformer, Joi
+### Core Framework
+- **Runtime**: Node.js 20+
+- **Framework**: NestJS v10.3.0 (TypeScript 5.3)
+- **HTTP Adapter**: Fastify (optimized for 100K+ concurrent connections)
+
+### Data Layer
+- **Database**: PostgreSQL 12+ with Prisma ORM v5.7.1
+- **Cache**: Redis v5.3.2 (ioredis client)
+- **ORM Features**: Connection pooling, migrations, type-safe queries
+
+### Communication & Processing
+- **TCP Servers**: Native Node.js `net` module (multi-port)
 - **HTTP Client**: Axios via @nestjs/axios
+- **Scheduling**: @nestjs/schedule for background jobs
+
+### Infrastructure & DevOps
+- **Logging**: Winston v3.11 with daily file rotation (winston-daily-rotate-file)
+- **Validation**: class-validator, class-transformer, Joi
+- **Containerization**: Docker & Docker Compose
+- **Monitoring**: Health check endpoints
+
+### Protocol Processing
+- **CRC Validation**: crc v4.3.2 for packet integrity
+- **Binary Parsing**: Native Node.js Buffer operations
+- **Custom Decoders**: GT06 & Teltonika protocol implementations
 
 ---
 
-## Project Structure
+## Project Structure (Clean Architecture)
 
 ```
 e:\2026\Listner-Nest/
 ├── prisma/
-│   ├── schema.prisma              # Database schema definition
-│   └── migrations/                # Database migrations
+│   ├── schema.prisma              # Database schema (DeviceStatus, CommandQueue, User, etc.)
+│   └── migrations/                # Database version control
+│
 ├── src/
-│   ├── main.ts                    # Application entry point
-│   ├── app.module.ts              # Root module
-│   ├── config/
-│   │   ├── configuration.ts       # Environment configuration (registerAs pattern)
-│   │   └── validation.schema.ts   # Joi validation schema for env variables
-│   ├── types/
-│   │   └── socket-meta.ts         # Custom type definitions (SocketWithMeta, etc.)
-│   ├── utils/
-│   │   ├── logger.ts              # Custom Winston logger
-│   │   ├── metrics.ts             # Prometheus metrics definitions
-│   │   ├── redisstart.ts          # Redis initialization utility
-│   │   ├── common.ts              # Common helper functions
-│   │   ├── executecommands.ts     # Command execution utility
-│   │   └── identifyos.ts          # OS identification utility
-│   └── modules/
-│       ├── connection-manager/    # Redis connection management
+│   ├── main.ts                    # Application bootstrap (Fastify config, CORS, pipes)
+│   ├── app.module.ts              # Root module orchestration
+│   │
+│   ├── config/                    # Configuration Layer
+│   │   ├── configuration.ts       # Namespaced config (registerAs pattern)
+│   │   └── validation.schema.ts   # Joi environment validation schema
+│   │
+│   ├── types/                     # Shared Type Definitions
+│   │   ├── socket-meta.ts         # SocketWithMeta, SocketMeta interfaces
+│   │   └── devicestatus.ts        # DeviceConnectionStatus, DeviceStatusPayload
+│   │
+│   ├── utils/                     # Infrastructure Utilities
+│   │   ├── logger.ts              # Winston logger factory & Logger class
+│   │   ├── redisstart.ts          # OS-specific Redis auto-start utility
+│   │   ├── executecommands.ts     # Command execution helper
+│   │   └── identifyos.ts          # OS detection utility
+│   │
+│   └── modules/                   # Feature Modules (Clean Architecture)
+│       │
+│       ├── sqlconnection/         # Data Access Layer (Global)
+│       │   ├── prisma.module.ts   # @Global() module for DI
+│       │   └── prisma.service.ts  # PrismaClient wrapper (singleton)
+│       │
+│       ├── connection-manager/    # Redis State Management
 │       │   ├── connection-manager.module.ts
-│       │   ├── connection-manager.service.ts
+│       │   ├── connection-manager.service.ts  # Redis client, connection tracking
 │       │   └── interfaces/
-│       │       └── connection.interface.ts
-│       ├── sqlconnection/         # Prisma PostgreSQL connection
-│       │   ├── prisma.module.ts   # @Global() module
-│       │   └── prisma.service.ts  # PrismaClient wrapper
-│       ├── common/                # Common business functions
+│       │       └── connection.interface.ts    # ConnectionInfo, ConnectionStats
+│       │
+│       ├── common/                # Shared Business Logic
 │       │   ├── common.module.ts
-│       │   └── common.service.ts
-│       ├── data-forwarder/        # HTTP POST API data forwarding
-│       │   ├── data-forwarder.module.ts
-│       │   └── data-forwarder.service.ts
-│       ├── protocols/             # Protocol handling (factory pattern)
-│       │   ├── protocol.factory.ts       # Port-to-service mapping
+│       │   └── common.service.ts  # validateImei, updateDeviceLiveStatus, helpers
+│       │
+│       ├── protocols/             # Protocol Processing Layer (Factory Pattern)
+│       │   ├── protocol.factory.ts           # Port-to-protocol service mapper
 │       │   ├── protocols.module.ts
-│       │   ├── base/
-│       │   │   ├── decoder.interface.ts  # IProtocolDecoder interface
-│       │   │   └── base-decoder.abstract.ts  # Abstract base class
-│       │   ├── gt06/              # GT06 protocol implementation
-│       │   │   ├── gt06.service.ts       # Complete protocol service (decode/encode/process)
-│       │   │   └── gt06.types.ts         # Protocol-specific types
-│       │   └── teltonika/         # Teltonika protocol implementation
-│       │       ├── teltonika.service.ts  # Complete protocol service (decode/encode/process)
-│       │       └── teltonika.types.ts
-│       ├── device/                # Device management
-│       │   ├── device.module.ts
-│       │   ├── device.service.ts
-│       │   ├── device.controller.ts
-│       │   └── device.repository.ts      # Prisma repository pattern
-│       ├── tcp-server/            # TCP server for device connections
+│       │   ├── base/                         # Abstract Protocol Foundation
+│       │   │   ├── decoder.interface.ts      # IProtocolDecoder contract
+│       │   │   └── base-decoder.abstract.ts  # Shared utilities (CRC, validation)
+│       │   ├── gt06/                         # GT06 Protocol Implementation
+│       │   │   ├── gt06.service.ts           # Complete service (decode/encode/process)
+│       │   │   └── gt06.types.ts             # Protocol-specific types
+│       │   └── teltonika/                    # Teltonika Protocol Implementation
+│       │       ├── teltonika.service.ts      # Complete service (decode/encode/process)
+│       │       └── teltonika.types.ts        # Protocol-specific types
+│       │
+│       ├── tcp-server/            # TCP Connection Layer
 │       │   ├── tcp-server.module.ts
-│       │   └── tcp-server.service.ts
-│       ├── autosync/              # Background sync jobs
+│       │   └── tcp-server.service.ts  # Multi-port server, buffer management, socket lifecycle
+│       │
+│       ├── data-forwarder/        # External Integration Layer
+│       │   ├── data-forwarder.module.ts
+│       │   └── data-forwarder.service.ts  # Fire-and-forget HTTP POST forwarding
+│       │
+│       ├── autosync/              # Background Job Layer
 │       │   ├── autosync.module.ts
-│       │   └── autosync.service.ts
-│       └── api/                   # REST API endpoints
+│       │   └── autosync.service.ts  # Scheduled sync: IMEI list, status hash, commands
+│       │
+│       └── api/                   # HTTP API Layer
 │           ├── api.module.ts
-│           └── api.controller.ts
-├── docker-compose.yml
-├── Dockerfile
-├── package.json
-├── tsconfig.json
-└── nest-cli.json
+│           ├── api.controller.ts  # REST endpoints (health, info, commands)
+│           ├── api.service.ts     # API business logic
+│           └── guard/
+│               └── bearer-auth.guard.ts  # JWT Bearer authentication
+│
+├── docker-compose.yml             # Multi-container orchestration
+├── Dockerfile                     # Production-ready image
+├── package.json                   # Dependencies & scripts
+├── tsconfig.json                  # TypeScript configuration
+└── nest-cli.json                  # NestJS CLI configuration
 ```
 
 ---
 
-## Module Descriptions
+## Architecture Principles
+
+### 1. Clean Architecture Layers
+```
+┌─────────────────────────────────────────────┐
+│         HTTP API Layer (Fastify)            │
+│  Controllers, Guards, DTOs, REST endpoints  │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│        Application/Service Layer            │
+│   Business logic, data transformation       │
+│   (API Service, Protocol Services)          │
+└──────────────────┬──────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────┐
+│         Infrastructure Layer                │
+│  Database (Prisma), Cache (Redis),          │
+│  External APIs, TCP Servers                 │
+└─────────────────────────────────────────────┘
+```
+
+### 2. Dependency Flow
+- **Inward dependencies only**: Outer layers depend on inner layers
+- **Dependency Injection**: NestJS DI container manages all services
+- **Global modules**: PrismaModule, ConfigModule, CommonModule
+- **Single Responsibility**: Each module has one clear purpose
+
+### 3. Protocol Strategy Pattern
+- **Factory Pattern**: `ProtocolFactory` maps ports to protocol services
+- **Service-Based**: Complete protocol logic encapsulated in single service
+- **Extensibility**: Add new protocols by creating new service + factory registration
+
+---
+
+## Module Architecture Descriptions
 
 ### Core Infrastructure Modules
 
@@ -123,70 +197,927 @@ constructor(private prisma: PrismaService) {}
 - **Features**: Buffer management, protocol detection via port, graceful shutdown
 
 #### 4. **`/device`** - Device Management
-- **Purpose**: Device validation, CRUD operations, status tracking
-- **Key Files**: `device.service.ts`, `device.repository.ts`, `device.controller.ts`
-- **Pattern**: Controller → Service → Repository layering
-- **Features**: In-memory caching (5min TTL), raw SQL queries via Prisma
+### 1. **Data Access Layer** - `/sqlconnection`
 
-#### 5. **`/protocols`** - Protocol Processing (Service-Based Architecture)
-- **Purpose**: Complete protocol handling via dedicated services for each protocol
-- **Key Components**:
-  - **`protocol.factory.ts`**: Maps port numbers to protocol service instances
-  - **`base/decoder.interface.ts`**: Common interface (`IProtocolDecoder`)
-  - **`base/base-decoder.abstract.ts`**: Shared utility methods (CRC, coordinate parsing)
-  - **`gt06/gt06.service.ts`**: Complete GT06 service (decode, encode, ACK, transform, process)
-  - **`teltonika/teltonika.service.ts`**: Complete Teltonika service (decode, encode, ACK, transform, process)
+**Purpose**: Global PostgreSQL database connection management
 
-**Protocol Service Pattern** (All-in-One Approach):
-Each protocol service extends `BaseDecoder` and implements:
+**Key Files**: 
+- `prisma.module.ts` - Global module registration
+- `prisma.service.ts` - PrismaClient wrapper with lifecycle hooks
+
+**Architecture Pattern**: 
+```typescript
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService],
+})
+export class PrismaModule {}
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+  async onModuleInit() {
+    await this.$connect();
+  }
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+}
+```
+
+**Usage Guidelines**:
+- ✅ **ALWAYS** inject `PrismaService` via constructor DI
+- ❌ **NEVER** instantiate `new PrismaClient()` directly
+- Connection pooling managed automatically
+- Single shared instance across entire application
+
+```typescript
+// Correct usage
+constructor(private readonly prisma: PrismaService) {}
+
+async findDevice(imei: string) {
+  return this.prisma.deviceStatus.findUnique({ where: { imei } });
+}
+```
+
+---
+
+### 2. **Cache Layer** - `/connection-manager`
+
+**Purpose**: Redis-based connection state, device status, and command queue management
+
+**Key Files**:
+- `connection-manager.service.ts` - Redis client lifecycle & operations
+- `connection.interface.ts` - ConnectionInfo, ConnectionStats types
+
+**Architecture Pattern**:
+```typescript
+@Injectable()
+export class ConnectionManagerService implements OnModuleInit, OnModuleDestroy {
+  private redisClient: Redis;
+  private readonly TTL = 3600; // 1 hour
+  
+  async onModuleInit() {
+    // Initialize Redis with auto-start capability
+    await this.initializeRedis(redisConfig);
+  }
+  
+  getRedisClient(): Redis {
+    return this.redisClient;
+  }
+}
+```
+
+**Redis Key Structure** (from `config/configuration.ts`):
+```typescript
+rediskeys: {
+  deviceImeiSet: 'devices:imei:set',           // SET - All valid device IMEIs
+  deviceStatusHash: 'devices:status',          // HASH - Live device status
+  commandQueuePrefix: 'devices:commands:',     // LIST - Command queues (per IMEI)
+}
+```
+
+**Key Features**:
+- Auto-start Redis service on connection failure (OS-specific via `redisstart.ts`)
+- Shared Redis client exposed via `getRedisClient()`
+- TTL-based expiration for connection metadata
+- Graceful reconnection with exponential backoff
+
+**Usage Example**:
+```typescript
+constructor(private readonly connectionManager: ConnectionManagerService) {}
+
+private get redis() {
+  return this.connectionManager.getRedisClient();
+}
+
+async isValidDevice(imei: string): Promise<boolean> {
+  return (await this.redis.sismember('devices:imei:set', imei)) === 1;
+}
+```
+
+---
+
+### 3. **Protocol Processing Layer** - `/protocols`
+
+**Purpose**: Complete protocol handling with factory pattern for extensibility
+
+**Architecture Components**:
+
+#### A. **Protocol Factory** (`protocol.factory.ts`)
+Maps TCP ports to protocol service instances:
+```typescript
+@Injectable()
+export class ProtocolFactory {
+  private decoderMap: Map<number, IProtocolDecoder> = new Map();
+  
+  constructor(
+    private gt06Service: GT06Service,
+    private teltonikaService: TeltonikaService,
+  ) {
+    this.initializeDecoders(); // Port-to-service mapping
+  }
+  
+  getDecoderByPort(port: number): IProtocolDecoder | null { }
+  getProcessByPort(port: number): ProcessFunction | null { }
+  getProtocolNameByPort(port: number): string | null { }
+}
+```
+
+#### B. **Base Protocol Interface** (`base/decoder.interface.ts`)
+Standard contract for all protocols:
+```typescript
+export enum PacketType {
+  LOGIN = 'LOGIN',
+  HEARTBEAT = 'HEARTBEAT',
+  LOCATION = 'LOCATION',
+  ALARM = 'ALARM',
+  STATUS = 'STATUS',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export interface IProtocolDecoder {
+  readonly protocolName: string;
+  
+  // Core decoder methods
+  decode(buffer: Buffer, socket: Socket): DecodedPacket | null;
+  generateAck(packet: DecodedPacket): Buffer | null;
+  transformToDeviceData(packet: DecodedPacket): DeviceData | null;
+  
+  // Buffer management
+  hasCompletePacket(buffer: Buffer): boolean;
+  getPacketLength(buffer: Buffer): number;
+}
+
+export interface DeviceData {
+  imei: string;
+  protocol: string;
+  packetType: PacketType;
+  location?: LocationData;
+  sensors?: Record<string, any>;
+  status?: Record<string, any>;
+  timestamp: Date;
+  raw?: string;
+}
+```
+
+#### C. **Abstract Base Decoder** (`base/base-decoder.abstract.ts`)
+Shared utilities for all protocol implementations:
+```typescript
+export abstract class BaseDecoder implements IProtocolDecoder {
+  protected logger: Logger;
+  abstract readonly protocolName: string;
+  readonly requiresDeviceValidation: boolean = true;
+  
+  // Abstract methods (must implement)
+  abstract decode(buffer: Buffer, socket: Socket): DecodedPacket | null;
+  abstract generateAck(packet: DecodedPacket): Buffer | null;
+  abstract transformToDeviceData(packet: DecodedPacket): DeviceData | null;
+  abstract hasCompletePacket(buffer: Buffer): boolean;
+  abstract getPacketLength(buffer: Buffer): number;
+  
+  // Shared utilities
+  protected validateImei(imei: string): boolean { }
+  protected parseCoordinates(lat: number, lon: number): LocationData { }
+  protected calculateCRC(buffer: Buffer): number { }
+}
+```
+
+#### D. **Protocol Services** (Complete Implementation Pattern)
+Each protocol service is **self-contained** with all logic in one place:
+
 ```typescript
 @Injectable()
 export class GT06Service extends BaseDecoder {
   readonly protocolName = 'GT06';
   
-  // Decoder methods
-  decode(buffer: Buffer, socket: Socket): DecodedPacket | null { }
-  generateAck(packet: DecodedPacket): Buffer | null { }
-  transformToDeviceData(packet: DecodedPacket): DeviceData | null { }
-  hasCompletePacket(buffer: Buffer): boolean { }
-  getPacketLength(buffer: Buffer): number { }
+  constructor(
+    private readonly dataForwarder: DataForwarderService,
+    private readonly commonService: CommonService,
+  ) { super(); }
   
-  // Encoder methods
-  encodeCommand(command: string, serialNumber?: number): Buffer | null { }
-  sendCommand(socket: Socket, command: string): Promise<boolean> { }
+  // ===== DECODER METHODS =====
+  decode(buffer: Buffer, socket: Socket): DecodedPacket | null {
+    // Parse GT06 binary protocol
+  }
   
-  // Processing orchestration
-  async processData(socket: SocketWithMeta, parsedData: any, port: number): Promise<void> { }
+  generateAck(packet: DecodedPacket): Buffer | null {
+    // Generate protocol-specific acknowledgment
+  }
+  
+  transformToDeviceData(packet: DecodedPacket): DeviceData | null {
+    // Transform to standard DeviceData format
+  }
+  
+  hasCompletePacket(buffer: Buffer): boolean {
+    // Check if buffer contains complete packet
+  }
+  
+  getPacketLength(buffer: Buffer): number {
+    // Extract packet length from header
+  }
+  
+  // ===== ENCODER METHODS =====
+  encodeCommand(command: string, serialNumber?: number): Buffer | null {
+    // Encode command string to binary protocol
+  }
+  
+  sendCommand(socket: Socket, command: string): Promise<boolean> {
+    // Send encoded command to device
+  }
+  
+  // ===== PROCESSING ORCHESTRATION =====
+  async processData(socket: SocketWithMeta, parsedData: any, port: number): Promise<void> {
+    // Validate device → Update Redis → Forward data
+    const isValid = await this.commonService.validateImei(parsedData.imei);
+    if (!isValid) return;
+    
+    await this.commonService.updateDeviceLiveStatus({ imei: parsedData.imei, ... });
+    this.dataForwarder.forwardData(deviceData); // Fire-and-forget
+  }
 }
 ```
 
 **Benefits of Service-Based Architecture**:
-- ✅ Single Responsibility: Each service handles one protocol completely
-- ✅ Encapsulation: All protocol logic (decode/encode/process) in one place
-- ✅ Maintainability: Easy to add new protocols by creating new service
-- ✅ Clean Code: No separate decoder, encoder, and process files
-- ✅ Type Safety: Full TypeScript with proper interfaces
+- ✅ **Cohesion**: All protocol logic (decode/encode/process) in single class
+- ✅ **Encapsulation**: Internal state and dependencies managed per protocol
+- ✅ **Testability**: Easy to mock dependencies and test in isolation
+- ✅ **Extensibility**: Add new protocol = Create new service + Register in factory
+- ✅ **No fragmentation**: No separate decoder/encoder/processor files
 
-#### 6. **`/data-forwarder`** - HTTP Data Forwarding
-- **Purpose**: Sends processed GPS data to external APIs via HTTP POST
-- **Key Files**: `data-forwarder.service.ts`
-- **Pattern**: Fire-and-forget (no await), retry logic, error handling
-- **Features**: Configurable endpoints, timeout handling
+**Adding New Protocol**:
+1. Create `protocols/newprotocol/newprotocol.service.ts` extending `BaseDecoder`
+2. Implement all abstract methods
+3. Register in `protocol.factory.ts` constructor
+4. Update `configuration.ts` with new port
+5. Update `validation.schema.ts` with port validation
 
-#### 7. **`/common`** - Common Business Functions
-- **Purpose**: Shared business logic utilities
-- **Key Files**: `common.service.ts`
-- **Usage**: Helper methods used across multiple modules
+---
 
-#### 8. **`/autosync`** - Background Synchronization
-- **Purpose**: Scheduled tasks for device sync, cleanup
-- **Key Files**: `autosync.service.ts`
-- **Pattern**: Uses `@nestjs/schedule`, implements graceful shutdown
+### 4. **TCP Connection Layer** - `/tcp-server`
 
-#### 9. **`/api`** - REST API Endpoints
-- **Purpose**: Exposes HTTP REST API for external clients
-- **Key Files**: `api.controller.ts`
-- **Features**: Device queries, status checks, health endpoints
+**Purpose**: Multi-port TCP server managing 100K+ concurrent device connections
+
+**Key Files**:
+- `tcp-server.service.ts` - Server lifecycle, buffer management, socket handling
+
+**Architecture Pattern**:
+```typescript
+@Injectable()
+export class TcpServerService implements OnModuleInit, OnModuleDestroy {
+  private servers: Map<number, net.Server> = new Map();
+  private socketBuffers: Map<SocketWithMeta, SocketBuffer> = new Map();
+  private connections = new Map<string, net.Socket>();
+  private isShuttingDown = false;
+  
+  async onModuleInit() {
+    const ports = this.protocolFactory.getAllPorts();
+    for (const port of ports) {
+      await this.startServer(port);
+    }
+  }
+  
+  private handleConnection(socket: SocketWithMeta, port: number, protocol: string) {
+    // Initialize socket metadata
+    socket.meta = {
+      connectionId: `${remoteAddress}:${remotePort}`,
+      imei: undefined,
+      isAuthorized: false,
+      createdAt: new Date(),
+      lastPacketAt: undefined,
+    };
+    
+    // Buffer accumulation pattern
+    socket.on('data', (chunk) => this.handleData(socket, chunk, port));
+    socket.on('error', (err) => this.handleError(socket, err));
+    socket.on('close', () => this.handleClose(socket));
+  }
+}
+```
+
+**Socket Buffer Management**:
+```typescript
+interface SocketBuffer {
+  buffer: Buffer;
+  imei?: string;
+}
+
+private handleData(socket: SocketWithMeta, chunk: Buffer, port: number) {
+  // Accumulate chunks in buffer
+  socketBuffer.buffer = Buffer.concat([socketBuffer.buffer, chunk]);
+  
+  // Process complete packets
+  while (decoder.hasCompletePacket(socketBuffer.buffer)) {
+    const packet = decoder.decode(socketBuffer.buffer, socket);
+    
+    // Send ACK if required
+    if (packet?.requiresAck) {
+      const ack = decoder.generateAck(packet);
+      if (ack) socket.write(ack);
+    }
+    
+    // Process data asynchronously
+    if (packet?.type === PacketType.LOCATION) {
+      const processFunc = this.protocolFactory.getProcessByPort(port);
+      processFunc(socket, packet, port); // Fire-and-forget
+    }
+    
+    // Remove processed bytes from buffer
+    socketBuffer.buffer = socketBuffer.buffer.slice(packetLength);
+  }
+}
+```
+
+**Performance Optimizations**:
+- `maxConnections` per port (default: 50,000)
+- Buffer reuse and slicing (avoid memory leaks)
+- Fire-and-forget processing (non-blocking)
+- Connection pooling with graceful shutdown
+
+---
+
+### 5. **Business Logic Layer** - `/common`
+
+**Purpose**: Shared business logic for device validation, status updates, helpers
+
+**Key Files**:
+- `common.service.ts` - Central business logic utilities
+
+**Architecture Pattern**:
+```typescript
+@Injectable()
+export class CommonService {
+  private readonly DEVICE_IMEI_SET_KEY: string;
+  private readonly DEVICE_STATUS_HASH_KEY: string;
+  private readonly COMMAND_QUEUE_KEY_PREFIX: string;
+  
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly connectionManager: ConnectionManagerService,
+    private readonly configService: ConfigService,
+  ) {
+    // Load Redis keys from global config
+    this.DEVICE_IMEI_SET_KEY = this.configService.get('app.rediskeys.deviceImeiSet');
+    this.DEVICE_STATUS_HASH_KEY = this.configService.get('app.rediskeys.deviceStatusHash');
+    this.COMMAND_QUEUE_KEY_PREFIX = this.configService.get('app.rediskeys.commandQueuePrefix');
+  }
+  
+  private get redisClient() {
+    return this.connectionManager.getRedisClient();
+  }
+  
+  // ===== CORE BUSINESS METHODS =====
+  async validateImei(imei: string): Promise<boolean> {
+    return (await this.redisClient.sismember(this.DEVICE_IMEI_SET_KEY, imei)) === 1;
+  }
+  
+  async updateDeviceLiveStatus(payload: DeviceStatusPayload): Promise<void> {
+    // Merge with existing data
+    const existingJson = await this.redisClient.hget(this.DEVICE_STATUS_HASH_KEY, payload.imei);
+    const merged = existingJson ? JSON.parse(existingJson) : { imei: payload.imei };
+    
+    // Update only provided fields
+    Object.assign(merged, payload);
+    
+    // Single Redis write
+    await this.redisClient.hset(
+      this.DEVICE_STATUS_HASH_KEY,
+      payload.imei,
+      JSON.stringify(merged),
+    );
+  }
+  
+  async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+**Why CommonService?**
+- Central place for business logic shared across modules
+- Direct access to Redis via ConnectionManager
+- Type-safe configuration access
+- Reusable utilities (validation, delay, etc.)
+
+---
+
+### 6. **External Integration Layer** - `/data-forwarder`
+
+**Purpose**: Fire-and-forget HTTP forwarding of GPS data to external APIs
+
+**Key Files**:
+- `data-forwarder.service.ts` - Async HTTP POST client
+
+**Architecture Pattern**:
+```typescript
+@Injectable()
+export class DataForwarderService {
+  private forwardUrl: string;
+  private readonly TIMEOUT = 5000;
+  
+  constructor(
+    private httpService: HttpService,
+    private configService: ConfigService,
+  ) {
+    this.forwardUrl = this.configService.get<string>('app.dataForward.url')!;
+  }
+  
+  forwardData(deviceData: DeviceData): void {
+    // Non-blocking, fire-and-forget
+    this.httpService.post(this.forwardUrl, deviceData).subscribe({
+      error: () => {} // Silently ignore errors
+    });
+  }
+}
+```
+
+**Design Decisions**:
+- ❌ **No await** - Don't block TCP processing
+- ❌ **No retry logic** - Prevents backpressure
+- ❌ **Silent error handling** - GPS data forwarding failures don't stop tracking
+- ✅ **Observable pattern** - RxJS for async HTTP
+
+**Usage in Protocol Services**:
+```typescript
+async processData(socket: SocketWithMeta, parsedData: any, port: number) {
+  const deviceData = this.transformToDeviceData(parsedData);
+  this.dataForwarder.forwardData(deviceData); // Fire-and-forget
+}
+```
+
+---
+
+### 7. **Background Jobs Layer** - `/autosync`
+
+**Purpose**: Scheduled synchronization between PostgreSQL and Redis
+
+**Key Files**:
+- `autosync.service.ts` - Interval-based sync jobs
+
+**Architecture Pattern**:
+```typescript
+@Injectable()
+export class AutosyncService implements OnApplicationBootstrap, BeforeApplicationShutdown {
+  private redis: Redis;
+  private isSyncing = false;
+  
+  async onApplicationBootstrap() {
+    this.redis = this.connectionManager.getRedisClient();
+    await this.syncInitialData(); // Startup sync
+  }
+  
+  @Interval(5 * 60 * 1000) // Every 5 minutes
+  async handleFiveMinuteSync() {
+    if (this.isSyncing) return; // Prevent overlap
+    
+    this.isSyncing = true;
+    try {
+      await this.syncDeviceImeiList();    // PostgreSQL → Redis SET
+      await this.syncDeviceStatusHash();  // PostgreSQL → Redis HASH
+      await this.syncCommandQueues();     // PostgreSQL → Redis LISTs
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+  
+  async beforeApplicationShutdown() {
+    await this.finalSync(); // Ensure data consistency on shutdown
+  }
+}
+```
+
+**Sync Operations**:
+
+1. **IMEI List Sync** (`devices:imei:set`):
+   - Fetch all active device IMEIs from PostgreSQL
+   - Refresh Redis SET for O(1) validation lookups
+   
+2. **Device Status Sync** (`devices:status` HASH):
+   - Pull latest device status from PostgreSQL
+   - Update Redis HASH for real-time status queries
+   
+3. **Command Queue Sync** (`devices:commands:<imei>` LISTs):
+   - Fetch pending commands from PostgreSQL
+   - Push to Redis LISTs per device
+   - Protocol services pop commands and send to devices
+
+**Why Interval-Based Sync?**
+- PostgreSQL is source of truth
+- Redis provides fast access for real-time operations
+- Scheduled sync keeps cache fresh without constant DB queries
+- Startup sync ensures immediate availability
+
+---
+
+### 8. **HTTP API Layer** - `/api`
+
+**Purpose**: REST API for external integrations, monitoring, and management
+
+**Key Files**:
+- `api.controller.ts` - REST endpoints
+- `api.service.ts` - API business logic
+- `guard/bearer-auth.guard.ts` - JWT Bearer authentication
+
+**Architecture Pattern**:
+```typescript
+@Controller('api')
+export class ApiController {
+  constructor(private readonly apiService: ApiService) {}
+  
+  @Get('health')
+  async getHealth() {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
+  }
+  
+  @Get('info')
+  getInfo() {
+    return {
+      name: 'ListnerNest GPS Tracker Server',
+      version: '1.0.0',
+      environment: process.env.NODE_ENV,
+    };
+  }
+  
+  @Post('commands/:imei')
+  @UseGuards(BearerAuthGuard)
+  async addCommand(@Param('imei') imei: string, @Body('command') command: string) {
+    return await this.apiService.SendCommand(imei, command);
+  }
+}
+```
+
+**Bearer Auth Guard**:
+```typescript
+@Injectable()
+export class BearerAuthGuard implements CanActivate {
+  constructor(private configService: ConfigService) {}
+  
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const authHeader = request.headers.authorization;
+    
+    if (!authHeader?.startsWith('Bearer ')) return false;
+    
+    const token = authHeader.substring(7);
+    const secretKey = this.configService.get<string>('app.security.secretKey');
+    
+    return token === secretKey;
+  }
+}
+```
+
+**API Endpoints**:
+- `GET /api/health` - Health check (no auth)
+- `GET /api/info` - System information (no auth)
+- `POST /api/commands/:imei` - Send command to device (Bearer auth required)
+
+---
+
+## Data Flow Architecture
+
+### End-to-End Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         GPS DEVICE                                  │
+│                   (GT06/Teltonika Hardware)                         │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Binary Protocol over TCP
+                      │ (Port 5023 for GT06, 5024 for Teltonika)
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    TCP SERVER LAYER                                 │
+│                  (TcpServerService)                                 │
+│  - Accepts connections on multiple ports                            │
+│  - Initializes socket metadata                                      │
+│  - Accumulates binary data in buffers                               │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Raw Buffer
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  PROTOCOL FACTORY                                   │
+│                 (ProtocolFactory)                                   │
+│  - Maps port number to protocol decoder                             │
+│  - Routes to appropriate service (GT06/Teltonika)                   │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Port-based routing
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              PROTOCOL DECODER SERVICE                               │
+│            (GT06Service / TeltonikaService)                         │
+│  1. hasCompletePacket() - Check buffer completeness                 │
+│  2. decode() - Parse binary to DecodedPacket                        │
+│  3. generateAck() - Create acknowledgment packet                    │
+│  4. Send ACK back to device via socket.write()                      │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ DecodedPacket
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              VALIDATION & PROCESSING                                │
+│                 (processData method)                                │
+│  1. Validate IMEI via CommonService.validateImei()                  │
+│  2. Check device in Redis SET (devices:imei:set)                    │
+│  3. If invalid → Reject, close connection                           │
+│  4. If valid → Continue processing                                  │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Validated DecodedPacket
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              DATA TRANSFORMATION                                    │
+│          (transformToDeviceData method)                             │
+│  - Convert protocol-specific format to standard DeviceData          │
+│  - Extract: IMEI, Location, Speed, Course, Sensors, etc.            │
+│  - Add timestamp and metadata                                       │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ DeviceData (standardized)
+                      ├─────────────────┬─────────────────┐
+                      ▼                 ▼                 ▼
+            ┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐
+            │ REDIS UPDATE    │ │ DATA         │ │ METRICS UPDATE  │
+            │ (CommonService) │ │ FORWARDING   │ │ (Prometheus)    │
+            └─────────────────┘ └──────────────┘ └──────────────────┘
+                      │                 │                 │
+                      │                 │                 │
+      Update status hash        Fire-and-forget    Increment counters
+      (devices:status)          HTTP POST           (packets_processed)
+                      │                 │                 │
+                      ▼                 ▼                 ▼
+            ┌─────────────────┐ ┌──────────────┐ ┌──────────────────┐
+            │ Redis HASH      │ │ External API │ │ Monitoring       │
+            │ (Live Status)   │ │ Webhook      │ │ Dashboard        │
+            └─────────────────┘ └──────────────┘ └──────────────────┘
+```
+
+### Detailed Flow Breakdown
+
+#### 1. **Connection Establishment**
+```typescript
+// Device connects → TCP Server accepts
+handleConnection(socket: SocketWithMeta, port: number, protocol: string) {
+  // Initialize socket metadata
+  socket.meta = {
+    connectionId: `${remoteAddress}:${remotePort}`,
+    imei: undefined,
+    isAuthorized: false,
+    createdAt: new Date(),
+    lastPacketAt: undefined,
+  };
+  
+  // Register event handlers
+  socket.on('data', (chunk) => this.handleData(socket, chunk, port));
+  socket.on('error', (err) => this.handleError(socket, err));
+  socket.on('close', () => this.handleClose(socket));
+  
+  // Update metrics
+  metrics.totalConnections.inc({ protocol, port: port.toString() });
+}
+```
+
+#### 2. **Data Reception & Buffering**
+```typescript
+// Data arrives in chunks → Accumulate in buffer
+handleData(socket: SocketWithMeta, chunk: Buffer, port: number) {
+  // Get or create socket buffer
+  let socketBuffer = this.socketBuffers.get(socket);
+  if (!socketBuffer) {
+    socketBuffer = { buffer: Buffer.alloc(0), imei: undefined };
+    this.socketBuffers.set(socket, socketBuffer);
+  }
+  
+  // Accumulate chunk
+  socketBuffer.buffer = Buffer.concat([socketBuffer.buffer, chunk]);
+  
+  // Process complete packets
+  this.processBuffer(socket, socketBuffer, port);
+}
+```
+
+#### 3. **Protocol Detection & Decoding**
+```typescript
+// Factory routes to appropriate decoder
+const decoder = this.protocolFactory.getDecoderByPort(port);
+
+// Check for complete packet
+while (decoder.hasCompletePacket(socketBuffer.buffer)) {
+  // Decode packet
+  const packet = decoder.decode(socketBuffer.buffer, socket);
+  
+  // Send acknowledgment
+  if (packet?.requiresAck) {
+    const ack = decoder.generateAck(packet);
+    if (ack) socket.write(ack);
+  }
+  
+  // Process packet asynchronously (fire-and-forget)
+  if (packet?.type === PacketType.LOCATION) {
+    const processFunc = this.protocolFactory.getProcessByPort(port);
+    processFunc(socket, packet, port); // Non-blocking
+  }
+  
+  // Remove processed bytes
+  const packetLength = decoder.getPacketLength(socketBuffer.buffer);
+  socketBuffer.buffer = socketBuffer.buffer.slice(packetLength);
+}
+```
+
+#### 4. **Device Validation**
+```typescript
+// Validate device against Redis cache
+async processData(socket: SocketWithMeta, parsedData: any, port: number) {
+  // Check if IMEI exists in Redis SET
+  const isValid = await this.commonService.validateImei(parsedData.imei);
+  
+  if (!isValid) {
+    this.logger.warn('⚠️ Device not authorized', { imei: parsedData.imei });
+    socket.destroy(); // Close connection
+    return;
+  }
+  
+  // Continue processing...
+}
+```
+
+#### 5. **Data Transformation**
+```typescript
+// Convert protocol-specific format to standard DeviceData
+const deviceData: DeviceData = {
+  imei: packet.imei,
+  protocol: 'GT06',
+  packetType: PacketType.LOCATION,
+  location: {
+    latitude: packet.latitude,
+    longitude: packet.longitude,
+    altitude: packet.altitude,
+    speed: packet.speed,
+    course: packet.course,
+    satellites: packet.satellites,
+    timestamp: packet.timestamp,
+    valid: packet.gpsValid,
+  },
+  sensors: packet.sensors,
+  status: packet.status,
+  timestamp: new Date(),
+  raw: packet.raw.toString('hex'),
+};
+```
+
+#### 6. **Parallel Processing**
+```typescript
+// Three operations happen in parallel:
+
+// A. Update Redis status (non-blocking)
+this.commonService.updateDeviceLiveStatus({
+  imei: deviceData.imei,
+  status: 'CONNECTED',
+  lat: deviceData.location.latitude,
+  lon: deviceData.location.longitude,
+  speed: deviceData.location.speed,
+  course: deviceData.location.course,
+  updatedAt: new Date(),
+});
+
+// B. Forward data to external API (fire-and-forget)
+this.dataForwarder.forwardData(deviceData);
+
+// C. Update Prometheus metrics
+metrics.packetsProcessed.inc({ 
+  protocol: deviceData.protocol,
+  type: deviceData.packetType 
+});
+```
+
+### Data Synchronization Flow (AutoSync)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    APPLICATION STARTUP                              │
+│                 (onApplicationBootstrap)                            │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    INITIAL SYNC                                     │
+│  1. Fetch all device IMEIs from PostgreSQL                          │
+│  2. Load into Redis SET (devices:imei:set)                          │
+│  3. Fetch device status from PostgreSQL                             │
+│  4. Load into Redis HASH (devices:status)                           │
+│  5. Fetch pending commands from PostgreSQL                          │
+│  6. Load into Redis LISTs (devices:commands:<imei>)                 │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              PERIODIC SYNC (Every 5 minutes)                        │
+│                                                                     │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │  SYNC DEVICE IMEI LIST                                     │    │
+│  │  - Query: SELECT imei FROM devices WHERE active = true     │    │
+│  │  - Redis: SADD devices:imei:set <imei1> <imei2> ...       │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                             │                                       │
+│                             ▼                                       │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │  SYNC DEVICE STATUS                                        │    │
+│  │  - Query: SELECT * FROM device_status                      │    │
+│  │  - Redis: HSET devices:status <imei> <json_data>          │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                             │                                       │
+│                             ▼                                       │
+│  ┌────────────────────────────────────────────────────────────┐    │
+│  │  SYNC COMMAND QUEUES                                       │    │
+│  │  - Query: SELECT * FROM command_queue WHERE sent = false   │    │
+│  │  - Redis: RPUSH devices:commands:<imei> <command>         │    │
+│  └────────────────────────────────────────────────────────────┘    │
+│                                                                     │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Repeat every 5 minutes
+                      ▼
+                  (Continuous Loop)
+```
+
+### Command Flow (Device Control)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  EXTERNAL CLIENT                                    │
+│           (HTTP POST /api/commands/:imei)                           │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Bearer Token Auth
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                 API CONTROLLER                                      │
+│              (BearerAuthGuard check)                                │
+│  - Validate Bearer token                                            │
+│  - Extract IMEI and command from request                            │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ {imei, command}
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  API SERVICE                                        │
+│  1. Insert command into PostgreSQL (command_queue table)            │
+│  2. Push command to Redis LIST (devices:commands:<imei>)            │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Command stored
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              TCP SERVER (Background Check)                          │
+│  - Periodically checks Redis LIST for pending commands              │
+│  - LPOP devices:commands:<imei>                                     │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Command retrieved
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              PROTOCOL SERVICE                                       │
+│           (encodeCommand + sendCommand)                             │
+│  1. Encode command to protocol-specific binary format               │
+│  2. Find active socket for IMEI                                     │
+│  3. socket.write(encodedCommand)                                    │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │ Binary command
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    GPS DEVICE                                       │
+│              (Receives and executes command)                        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Error Handling Flow
+
+```
+                      Error Occurs
+                          │
+                          ▼
+            ┌─────────────────────────────┐
+            │   Error Type Classification  │
+            └──────────┬──────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         ▼             ▼             ▼
+    ┌────────┐   ┌─────────┐   ┌─────────┐
+    │Expected│   │Network  │   │Critical │
+    │Failure │   │Error    │   │Error    │
+    └────┬───┘   └────┬────┘   └────┬────┘
+         │            │             │
+         ▼            ▼             ▼
+    ┌────────┐   ┌─────────┐   ┌─────────┐
+    │Log     │   │Log      │   │Log      │
+    │WARN    │   │ERROR    │   │ERROR    │
+    └────┬───┘   └────┬────┘   └────┬────┘
+         │            │             │
+         ▼            ▼             ▼
+    ┌────────┐   ┌─────────┐   ┌─────────┐
+    │Return  │   │Retry    │   │Throw    │
+    │null    │   │or null  │   │Error    │
+    └────────┘   └─────────┘   └─────────┘
+         │            │             │
+         ▼            ▼             ▼
+    Continue     Update       Application
+    Processing   Metrics      Shutdown
+```
 
 ---
 
@@ -229,100 +1160,312 @@ const dbUrl = this.configService.get<string>('app.database.url');
 
 ```typescript
 export const validationSchema = Joi.object({
+  // Database
   PRIMARY_DATABASE_URL: Joi.string().required(),
+  DB_POOL_SIZE: Joi.number().default(50),
+  
+  // TCP Ports
   GT06_PORT: Joi.number().default(5023),
+  TELTONIKA_PORT: Joi.number().default(5024),
+  
+  // Connection Config
+  CON_TIME_OUT: Joi.number().default(5000),
+  SOCKET_TIMEOUT: Joi.number().default(300000),
+  
+  // Security
+  SECRET_KEY: Joi.string().required(),
+  
+  // Data Forwarding
+  DATA_FORWARD_URL: Joi.string().uri().required(),
+  
+  // API
+  API_PORT: Joi.number().default(5055),
+  
+  // Redis
+  REDIS_HOST: Joi.string().default('localhost'),
+  REDIS_PORT: Joi.number().default(6379),
+  REDIS_PASSWORD: Joi.string().allow('').optional(),
+  
+  // Environment
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test', 'staging')
     .default('development'),
+  LOG_LEVEL: Joi.string()
+    .valid('error', 'warn', 'info', 'debug', 'verbose')
+    .default('info'),
 });
+```
+
+**Complete Configuration Structure**:
+```typescript
+{
+  database: {
+    url: string,
+    poolSize: number
+  },
+  ports: {
+    gt06: number,
+    teltonika: number
+  },
+  connection: {
+    timeout: number,
+    socketTimeout: number,
+    keepAliveTimeout: number,
+    maxConnectionsPerPort: number
+  },
+  security: {
+    secretKey: string
+  },
+  dataForward: {
+    url: string
+  },
+  api: {
+    port: number
+  },
+  redis: {
+    host: string,
+    port: number,
+    password?: string,
+    db: number
+  },
+  rediskeys: {
+    deviceImeiSet: 'devices:imei:set',
+    deviceStatusHash: 'devices:status',
+    commandQueuePrefix: 'devices:commands:'
+  },
+  nodeEnv: string,
+  logs: {
+    enabled: boolean,
+    level: string
+  }
+}
 ```
 
 ---
 
-## Coding Standards
+## Coding Standards & Best Practices
 
-### File Naming Conventions
+### 1. File Naming Conventions
 
 | Type | Pattern | Examples |
 |------|---------|----------|
-| Module | `<feature>.module.ts` | `device.module.ts`, `tcp-server.module.ts` |
-| Service | `<feature>.service.ts` | `device.service.ts`, `data-forwarder.service.ts` |
-| Controller | `<feature>.controller.ts` | `device.controller.ts`, `api.controller.ts` |
-| Repository | `<feature>.repository.ts` | `device.repository.ts` |
-| Interface | `<feature>.interface.ts` | `connection.interface.ts`, `decoder.interface.ts` |
-| Types | `<feature>.types.ts` | `gt06.types.ts`, `teltonika.types.ts` |
-| Abstract | `<feature>.abstract.ts` | `base-decoder.abstract.ts` |
-| Utility | `<utility>.ts` | `logger.ts`, `metrics.ts`, `common.ts` |
-| Config | `<config>.ts` | `configuration.ts`, `validation.schema.ts` |
-| Processor | `process.<protocol>.ts` | `process.gt06.ts`, `process.teltonika.ts` |
+| **Module** | `<feature>.module.ts` | `tcp-server.module.ts`, `protocols.module.ts` |
+| **Service** | `<feature>.service.ts` | `gt06.service.ts`, `data-forwarder.service.ts` |
+| **Controller** | `<feature>.controller.ts` | `api.controller.ts` |
+| **Guard** | `<name>-auth.guard.ts` | `bearer-auth.guard.ts` |
+| **Interface** | `<feature>.interface.ts` | `connection.interface.ts`, `decoder.interface.ts` |
+| **Types** | `<feature>.types.ts` OR `<feature>.ts` | `gt06.types.ts`, `socket-meta.ts`, `devicestatus.ts` |
+| **Abstract** | `base-<feature>.abstract.ts` | `base-decoder.abstract.ts` |
+| **Utility** | `<utility>.ts` | `logger.ts`, `redisstart.ts`, `executecommands.ts` |
+| **Config** | `<config>.ts` | `configuration.ts`, `validation.schema.ts` |
+| **Factory** | `<feature>.factory.ts` | `protocol.factory.ts` |
 
-### Class Naming Conventions
+### 2. Class Naming Conventions
 
 ```typescript
-// Services
-export class DeviceService { }
+// ===== Services (Business Logic) =====
 export class TcpServerService { }
+export class GT06Service extends BaseDecoder { }
+export class CommonService { }
+export class DataForwarderService { }
 
-// Controllers
-export class DeviceController { }
+// ===== Controllers (API Endpoints) =====
 export class ApiController { }
 
-// Modules
-export class DeviceModule { }
+// ===== Modules (Feature Boundaries) =====
 export class ProtocolsModule { }
+export class ConnectionManagerModule { }
 
-// Repositories
-export class DeviceRepository { }
+// ===== Guards (Authentication/Authorization) =====
+export class BearerAuthGuard implements CanActivate { }
 
-// Decoders
-export class GT06Decoder { }
-export class TeltonikaDecoder { }
-
-// Factories
+// ===== Factories (Object Creation) =====
 export class ProtocolFactory { }
 
-// Interfaces (with I prefix or descriptive)
+// ===== Interfaces (Contracts) =====
 export interface IProtocolDecoder { }
 export interface ConnectionInfo { }
+export interface DeviceData { }
 
-// Enums
-export enum PacketType { }
-export enum GT06MessageType { }
+// ===== Enums (Constants) =====
+export enum PacketType {
+  LOGIN = 'LOGIN',
+  HEARTBEAT = 'HEARTBEAT',
+  LOCATION = 'LOCATION',
+}
 
-// Types
-export type SocketWithMeta = Socket & { meta?: SocketMeta };
+// ===== Type Aliases =====
+export type SocketWithMeta = net.Socket & { meta: SocketMeta };
+export type DeviceConnectionStatus = 'CONNECTED' | 'DISCONNECTED';
 ```
 
-### Variable & Method Naming
+### 3. Variable & Method Naming
 
 **camelCase for variables and methods**:
 ```typescript
-// Private fields
-private deviceCache: Map<string, Device>;
+// ===== Private Fields =====
+private redisClient: Redis;
+private socketBuffers: Map<SocketWithMeta, SocketBuffer>;
 private isShuttingDown: boolean;
 
-// Public methods
-async validateDevice(imei: string): Promise<Device | null> { }
+// ===== Public Methods =====
+async validateImei(imei: string): Promise<boolean> { }
 async forwardData(data: DeviceData): Promise<void> { }
+getDecoderByPort(port: number): IProtocolDecoder | null { }
 
-// Private methods
-private handleConnection(socket: Socket): void { }
+// ===== Private Methods =====
+private handleConnection(socket: SocketWithMeta, port: number): void { }
 private parseBuffer(buffer: Buffer): DecodedPacket | null { }
+private initializeDecoders(): void { }
 
-// Boolean methods
+// ===== Boolean Predicates (is/has/can prefix) =====
 isConnected(): boolean { }
 hasCompletePacket(buffer: Buffer): boolean { }
+canProcess(packet: DecodedPacket): boolean { }
 
-// Getters
-getDecoderByPort(port: number): IProtocolDecoder | null { }
+// ===== Getters (get prefix) =====
+getRedisClient(): Redis { }
 getActiveDevices(): Set<string> { }
+getProtocolNameByPort(port: number): string | null { }
 ```
 
 **UPPER_SNAKE_CASE for constants**:
 ```typescript
+// Class-level constants
 private static readonly DEFAULT_TIMEOUT = 30000;
 private static readonly MAX_BUFFER_SIZE = 8192;
-private readonly CACHE_TTL = 300000; // 5 minutes
+private readonly TTL = 3600; // 1 hour
+
+// Module-level constants (from config)
+private readonly DEVICE_IMEI_SET_KEY: string;
+private readonly DEVICE_STATUS_HASH_KEY: string;
+private readonly COMMAND_QUEUE_KEY_PREFIX: string;
+```
+
+### 4. TypeScript Best Practices
+
+#### A. **Strict Type Safety**
+```typescript
+// ✅ GOOD: Explicit return types
+async validateDevice(imei: string): Promise<boolean> {
+  return (await this.redis.sismember(this.DEVICE_IMEI_SET_KEY, imei)) === 1;
+}
+
+// ✅ GOOD: Null handling
+getDecoderByPort(port: number): IProtocolDecoder | null {
+  return this.decoderMap.get(port) ?? null;
+}
+
+// ✅ GOOD: Type guards
+if (packet?.type === PacketType.LOCATION && packet.location) {
+  // packet.location is guaranteed to exist
+}
+
+// ❌ BAD: Any types
+decode(buffer: any): any { } // Avoid!
+```
+
+#### B. **Readonly Properties**
+```typescript
+// ✅ GOOD: Readonly for immutable properties
+export abstract class BaseDecoder implements IProtocolDecoder {
+  abstract readonly protocolName: string;
+  readonly requiresDeviceValidation: boolean = true;
+}
+
+// ✅ GOOD: Readonly constructor parameters
+constructor(
+  private readonly prisma: PrismaService,
+  private readonly configService: ConfigService,
+) {}
+```
+
+#### C. **Proper Error Handling**
+```typescript
+// ✅ GOOD: Specific error handling
+try {
+  await this.prisma.device.findUnique({ where: { imei } });
+} catch (error) {
+  this.logger.error(
+    `Failed to validate device: ${imei}`,
+    error instanceof Error ? error.stack : String(error)
+  );
+  throw error;
+}
+
+// ✅ GOOD: Fire-and-forget with error suppression (when appropriate)
+forwardData(deviceData: DeviceData): void {
+  this.httpService.post(this.forwardUrl, deviceData).subscribe({
+    error: () => {} // Intentional: Don't block on forwarding errors
+  });
+}
+```
+
+### 5. Dependency Injection Patterns
+
+```typescript
+// ✅ GOOD: Constructor injection with readonly
+@Injectable()
+export class GT06Service extends BaseDecoder {
+  constructor(
+    private readonly dataForwarder: DataForwarderService,
+    private readonly commonService: CommonService,
+  ) {
+    super();
+  }
+}
+
+// ✅ GOOD: Property getter for lazy access
+export class CommonService {
+  constructor(
+    private readonly connectionManager: ConnectionManagerService,
+  ) {}
+  
+  private get redisClient() {
+    return this.connectionManager.getRedisClient();
+  }
+}
+
+// ❌ BAD: Direct instantiation
+const prisma = new PrismaClient(); // Never do this!
+```
+
+### 6. Module Organization
+
+```typescript
+// ✅ GOOD: Clear module boundaries
+@Module({
+  imports: [HttpModule],
+  providers: [DataForwarderService],
+  exports: [DataForwarderService],
+})
+export class DataForwarderModule {}
+
+// ✅ GOOD: Global modules for shared services
+@Global()
+@Module({
+  providers: [PrismaService],
+  exports: [PrismaService],
+})
+export class PrismaModule {}
+
+// ✅ GOOD: Import order
+@Module({
+  imports: [
+    // 1. Global config modules
+    ConfigModule.forRoot({ ... }),
+    
+    // 2. Infrastructure modules
+    PrismaModule,
+    ConnectionManagerModule,
+    
+    // 3. Feature modules
+    ProtocolsModule,
+    TcpServerModule,
+    ApiModule,
+  ],
+})
+export class AppModule {}
 ```
 
 ### Import Path Aliases (tsconfig.json)

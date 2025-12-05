@@ -1,17 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { ConfigService } from '@nestjs/config';
 import { IProtocolDecoder } from './base/decoder.interface';
 import { GT06Service } from './gt06/gt06.service';
 import { TeltonikaService } from './teltonika/teltonika.service';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { SocketWithMeta } from '@/types/socket-meta';
 
 @Injectable()
 export class ProtocolFactory {
-  private logger = new Logger(ProtocolFactory.name);
   private decoderMap: Map<number, IProtocolDecoder> = new Map();
 
   constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: ExtendedLoggerService,
     private configService: ConfigService,
     private gt06Service: GT06Service,
     private teltonikaService: TeltonikaService,

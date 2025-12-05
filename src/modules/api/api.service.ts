@@ -1,6 +1,7 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { TcpServerService } from '../tcp-server/tcp-server.service';
 import { PrismaService } from '../sqlconnection/prisma.service';
 import { ConnectionManagerService } from '../connection-manager/connection-manager.service';
@@ -9,9 +10,10 @@ import { bool, boolean } from 'joi';
 
 @Injectable()
 export class ApiService implements OnModuleInit {
-    private logger = new Logger(ApiService.name);
 
     constructor(
+        @Inject(WINSTON_MODULE_NEST_PROVIDER)
+        private readonly logger: ExtendedLoggerService,
         private readonly tcpServerService: TcpServerService,
         private readonly configService: ConfigService,
         private readonly prisma: PrismaService,

@@ -1,5 +1,7 @@
 import { Socket } from 'net';
-import { Logger } from '@utils/logger';
+import { Inject } from '@nestjs/common';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { 
   IProtocolDecoder, 
   DecodedPacket, 
@@ -8,7 +10,7 @@ import {
 } from './decoder.interface';
 
 export abstract class BaseDecoder implements IProtocolDecoder {
-  protected logger: Logger;
+  protected logger: ExtendedLoggerService;
   abstract readonly protocolName: string;
   
   /**
@@ -17,8 +19,11 @@ export abstract class BaseDecoder implements IProtocolDecoder {
    */
   readonly requiresDeviceValidation: boolean = true;
 
-  constructor() {
-    this.logger = new Logger(`${this.constructor.name}`);
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    logger: ExtendedLoggerService,
+  ) {
+    this.logger = logger;
   }
 
   /**

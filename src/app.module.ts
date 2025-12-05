@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { validationSchema } from './config/validation.schema';
+import { LoggerModule } from './modules/logger/logger.module';
 import { TcpServerModule } from './modules/tcp-server/tcp-server.module';
 import { ApiModule } from './modules/api/api.module';
 import { PrismaModule } from './modules/sqlconnection/prisma.module';
@@ -17,6 +18,7 @@ import { AutosyncModule } from './modules/autosync/autosync.module';
       validationSchema,
       envFilePath: '.env',
     }),
+    LoggerModule, // Global logger module - load first
     PrismaModule,
     CommonModule,
     ConnectionManagerModule, // Redis connection - must load before AutosyncModule

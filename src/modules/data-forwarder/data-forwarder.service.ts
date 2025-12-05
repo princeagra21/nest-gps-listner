@@ -1,18 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { DeviceData } from '../protocols/base/decoder.interface';
 
 
 
 @Injectable()
 export class DataForwarderService {
-  private logger = new Logger(DataForwarderService.name);
   private forwardUrl: string;
   private readonly TIMEOUT = 5000; // 5 seconds timeout
 
   constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: ExtendedLoggerService,
     private httpService: HttpService,
     private configService: ConfigService,
   ) {

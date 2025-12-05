@@ -56,5 +56,9 @@ export default registerAs('app', () => ({
   
   // Application Configuration
   nodeEnv: process.env.NODE_ENV || 'development',
-  logLevel: process.env.LOG_LEVEL || 'info',
+  // logLevel: process.env.LOG_LEVEL || 'info',
+  logs: {
+    enabled: process.env.LOG_ENABLED === 'true',
+    level: process.env.LOG_LEVEL || 'info',
+  },
 }));

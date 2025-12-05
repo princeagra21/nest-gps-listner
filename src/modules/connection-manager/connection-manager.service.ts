@@ -1,17 +1,21 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Inject } from '@nestjs/common';
+import { ExtendedLoggerService } from '@/modules/logger/logger.interface';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { Logger } from '@utils/logger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ConnectionInfo, ConnectionStats } from './interfaces/connection.interface';
 import { RedisStarter } from '@utils/redisstart';
 
 @Injectable()
 export class ConnectionManagerService implements OnModuleInit, OnModuleDestroy {
-  private logger = new Logger(ConnectionManagerService.name);
   private redisClient: Redis;
   private readonly TTL = 3600; // 1 hour in seconds
 
-  constructor(private configService: ConfigService) {}
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER)
+    private readonly logger: ExtendedLoggerService,
+    private configService: ConfigService,
+  ) {}
 
   async onModuleInit() {
     const redisConfig = this.configService.get('app.redis');
